@@ -1,0 +1,36 @@
+name: bootstrap
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg && pip install -q pillow numpy
+      - name: unpack source
+        run: |
+          cat src.tgz.part-* > /tmp/src.tgz
+          echo "625b8a494f3d571a68abb7d0e9a982961adb0f9527479b174d3a116f43e9f64d  /tmp/src.tgz" | sha256sum -c
+          tar xzf /tmp/src.tgz
+          git rm -q src.tgz.part-*
+          git config user.name "nfp-bot"; git config user.email "nfp-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "source: content plan, tools, publisher, photos, fonts"
+          git push -q
+      - name: render creatives
+        run: |
+          python tools/audio.py
+          python tools/render_img.py
+          python tools/slot_b.py --render
+          python tools/extra.py
+          python tools/render_vid.py
+      - name: commit creatives
+        run: |
+          git add -A media creatives content
+          git diff --cached --quiet || { git commit -q -m "render: all creatives"; git pull -q --rebase; git push -q; }
+          echo "images: $(ls media/img | wc -l) · videos: $(ls media/video | wc -l) · stories: $(ls media/story | wc -l) · thumbs: $(ls media/thumb | wc -l)"
