@@ -1,0 +1,69 @@
+name: publish
+on:
+  schedule:
+    - cron: '53 3 * * *'    # 09:23 IST  Instagram + Facebook story
+    - cron: '57 6 * * *'    # 12:27 IST  Instagram + Facebook 2nd post (reel or carousel)
+    - cron: '26 7 * * *'    # 12:56 IST  Threads
+    - cron: '27 12 * * *'   # 17:57 IST  YouTube Short
+    - cron: '56 13 * * *'   # 19:26 IST  Instagram + Facebook post / reel
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'What to run'
+        type: choice
+        options: [check, meta, meta_b, story, threads, youtube]
+        default: check
+      date:
+        description: 'Plan date YYYY-MM-DD (blank = today IST)'
+        required: false
+      dry:
+        description: 'Dry run (no posting)'
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: nfp-publish
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            content
+            publish
+            state
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q requests
+      - id: t
+        run: |
+          case "${{ github.event.schedule }}" in
+            "53 3 * * *")  echo "task=story"   >> "$GITHUB_OUTPUT" ;;
+            "57 6 * * *")  echo "task=meta_b"  >> "$GITHUB_OUTPUT" ;;
+            "26 7 * * *")  echo "task=threads" >> "$GITHUB_OUTPUT" ;;
+            "27 12 * * *") echo "task=youtube" >> "$GITHUB_OUTPUT" ;;
+            "56 13 * * *") echo "task=meta"    >> "$GITHUB_OUTPUT" ;;
+            *)             echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: publish
+        env:
+          META_PAGE_TOKEN: ${{ secrets.META_PAGE_TOKEN }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          NFP_DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry) && '1' || '0' }}
+        run: python publish/publish.py "${{ steps.t.outputs.task }}" ${{ inputs.date && format('--date {0}', inputs.date) || '' }}
+      - name: save state
+        if: always()
+        run: |
+          git config user.name "nfp-bot"; git config user.email "nfp-bot@users.noreply.github.com"
+          git add state
+          git diff --cached --quiet || { git commit -q -m "state: ${{ steps.t.outputs.task }} $(TZ=Asia/Kolkata date +%F)"; git pull -q --rebase; git push -q; }
