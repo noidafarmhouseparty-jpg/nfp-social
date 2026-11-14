@@ -1,6 +1,7 @@
 import os
 ROOT = os.environ.get('NFP_ROOT', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, wave
+os.makedirs(os.path.join(ROOT, 'tools', 'audio'), exist_ok=True)
 SR = 44100; D = 12.0
 rng = np.random.default_rng(7)
 def note(m): return 440.0 * 2 ** ((m - 69) / 12)
